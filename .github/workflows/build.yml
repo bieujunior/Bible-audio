@@ -1,0 +1,63 @@
+Mname: Construire l'application Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ouvrir le ZIP du projet
+        run: |
+          if [ -f bible_audio.zip ]; then
+            unzip -q -o bible_audio.zip
+            cp -r bible_audio/. .
+          fi
+          ls -la . lib assets
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Créer la partie Android du projet
+        run: |
+          cp pubspec.yaml /tmp/pubspec.yaml
+          cp lib/main.dart /tmp/main.dart
+          flutter create --platforms=android --org com.bieu --project-name bible_audio .
+          cp /tmp/pubspec.yaml pubspec.yaml
+          cp /tmp/main.dart lib/main.dart
+          rm -rf test
+
+      - name: Réglages Android (nom + voix de synthèse)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="Bible Audio"/' $M
+          sed -i 's#</queries>#<intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>#' $M
+          grep -n "TTS_SERVICE" $M
+
+      - run: flutter pub get
+
+      - name: Mettre le logo comme icône
+        run: dart run flutter_launcher_icons
+
+      - name: Construire l'APK (pour tester sur téléphone)
+        run: flutter build apk --release
+
+      - name: Construire l'AAB (pour le Play Store)
+        run: flutter build appbundle --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bible-audio
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
